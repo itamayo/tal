@@ -143,9 +143,8 @@ require.def('antie/widgets/list',
 			/**
 			 * Create list items from the bound data.
 			 * @private
-			 * @param {antie.devices.Device} device The device to render to.
 			 */
-			_createDataBoundItems: function(device) {
+			_createDataBoundItems: function() {
 				this._dataBound = true;
 
 				var self = this;
