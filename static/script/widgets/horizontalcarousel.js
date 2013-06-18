@@ -26,12 +26,12 @@
 
 require.def('antie/widgets/horizontalcarousel',
 	[
-	 	'antie/widgets/horizontallist',
-	 	'antie/widgets/list',
-	 	'antie/events/keyevent',
+		'antie/widgets/horizontallist',
+		'antie/widgets/list',
+		'antie/events/keyevent',
 		'antie/events/beforeselecteditemchangeevent'
 	],
-	function(HorizontalList, List, KeyEvent, BeforeSelectedItemChangeEvent) {
+	function (HorizontalList, List, KeyEvent, BeforeSelectedItemChangeEvent) {
 		/**
 		 * The HorizontalCarousel widget extends the HorizontalList widget to modify the animation behaviour to render a carousel rather than a list.
 		 * @name antie.widgets.HorizontalCarousel
@@ -67,7 +67,6 @@ require.def('antie/widgets/horizontalcarousel',
 				this._paddingItemsCreated = false;
 				this._super(id, itemFormatter, dataSource);
 				this.addClass('horizontalcarousel');
-
 				var self = this;
 				this.addEventListener('databound', function(evt) {
 					if(evt.target !== self) {
@@ -341,6 +340,86 @@ require.def('antie/widgets/horizontalcarousel',
 			 * @private
 			 */
 			_onDataBound: function(evt) {
+				function createWrappingCloneElementsAndReturnNumberOfPrefixedClones() {
+					var requiredWidth, widget, clone, i, copyWidth, prefixCloneCount;
+
+					requiredWidth = self._multiWidthItems ? maskSize.width : Math.ceil(maskSize.width / 2);
+
+					function createClone(widget) {
+						var clone;
+						clone = device.cloneElement(widget.outputElement, true, "clone", "_clone");
+						clone.cloneOfWidget = widget;
+
+						if(widget.hasClass('active')) {
+							device.removeClassFromElement(clone, 'active', true);
+						}
+						if(widget.hasClass('focus')) {
+							device.removeClassFromElement(clone, 'focus', true);
+							device.removeClassFromElement(clone, 'buttonFocussed', true);
+						}
+						return clone;
+					}
+
+					i = 0;
+					copyWidth = 0;
+					prefixCloneCount = 0
+
+					while(copyWidth < requiredWidth) {
+
+						widget = self._childWidgetOrder[i];
+						clone = createClone(widget);
+
+						device.appendChildElement(self.outputElement, clone);
+						var widgetWidth = device.getElementSize(widget.outputElement).width;
+						if(i === 0) {
+							requiredWidth += widgetWidth;
+						}
+						copyWidth += widgetWidth;
+						i++;
+						if(i == self._childWidgetOrder.length) i = 0;
+					}
+
+					copyWidth = 0;
+					i = self._childWidgetOrder.length-1;
+					while(copyWidth < requiredWidth) {
+						widget = self._childWidgetOrder[i];
+						clone = createClone(widget);
+
+						device.prependChildElement(self.outputElement, clone);
+						copyWidth += device.getElementSize(widget.outputElement).width;
+						i--;
+						prefixCloneCount++;
+						if(i == -1) i = self._childWidgetOrder.length-1;
+					}
+					return prefixCloneCount;
+				}
+
+				function addInviewportClassToAllElements() {
+					var widgetIndex;
+					for(widgetIndex=0; widgetIndex < self._childWidgetOrder.length; widgetIndex++) {
+						self._childWidgetOrder[widgetIndex].addClass('inviewport');
+					}
+				}
+
+				function createPaddingForNonWrappingCarousel() {
+					if(self._paddingItemsCreated) {
+						var paddingFunction = (self._renderMode == List.RENDER_MODE_LIST)
+							? device.createListItem
+							: device.createContainer;
+
+						var leftPadding = paddingFunction.call(device, self.id + 'PaddingLeft', ['viewportPadding', 'viewportPaddingLeft']);
+						device.setElementSize(leftPadding, {width: maskSize.width});
+						device.prependChildElement(self.outputElement, leftPadding);
+
+						var rightPadding = paddingFunction.call(device, self.id + 'PaddingRight', ['viewportPadding', 'viewportPaddingRight']);
+						device.setElementSize(rightPadding, {width: maskSize.width});
+						device.appendChildElement(self.outputElement, rightPadding);
+
+						prefixClones = 1;
+					}
+					self._paddingItemsCreated = true;
+				}
+
 				var self = this;
 				var application = this.getCurrentApplication();
 				if(!application) {
@@ -350,18 +429,6 @@ require.def('antie/widgets/horizontalcarousel',
 				var device = application.getDevice();
 
 				if(this._childWidgetOrder.length > 0) {
-					// TODO: tidy up
-					function moveLastToFirst() {
-						var last = self._items[self._childWidgetOrder[self._childWidgetOrder.length - 1]];
-						var first = self._items[self._childWidgetOrder[0]];
-						if(last) {
-							device.removeElement(last.outputElement);
-							device.prependElement(self.outputElement, last.outputElement);
-							var lastWidget = self._childWidgetOrder.pop();
-							self._childWidgetOrder.splice(0, 0, lastWidget);
-							self._selectedIndex++;
-						}
-					}
 
 					// How this implements wrap-around infinite scrolling:
 					// * Prepend a copy of the last page of items
@@ -374,87 +441,18 @@ require.def('antie/widgets/horizontalcarousel',
 					// with any number of items and allows for smooth transitions between start and end.
 
 					var maskSize = device.getElementSize(this._maskElement);
-					var copyWidth = 0;
-					var visibleWidth = 0;
-					var i = 0;
 					var prefixClones = 0;
-				
 					this._nodeOffset = 0;
 					this._childWidgetsInDocument = [];
 
 					if(this._viewportMode == HorizontalCarousel.VIEWPORT_MODE_NONE) {
-						for(var w=0; w<this._childWidgetOrder.length; w++) {
-							this._childWidgetOrder[w].addClass('inviewport');
-						}
+						addInviewportClassToAllElements();
 					}
 
 					if(this._wrapMode != HorizontalCarousel.WRAP_MODE_VISUAL) {
-						if(this._paddingItemsCreated) {
-							var paddingFunction = (this._renderMode == List.RENDER_MODE_LIST)
-													? device.createListItem
-													: device.createContainer;
-
-							var leftPadding = paddingFunction.call(device, this.id + 'PaddingLeft', ['viewportPadding', 'viewportPaddingLeft']);
-							device.setElementSize(leftPadding, {width: maskSize.width});
-							device.prependChildElement(this.outputElement, leftPadding);
-
-							var rightPadding = paddingFunction.call(device, this.id + 'PaddingRight', ['viewportPadding', 'viewportPaddingRight']);
-							device.setElementSize(rightPadding, {width: maskSize.width});
-							device.appendChildElement(this.outputElement, rightPadding);
-
-							prefixClones = 1;
-						}
-						this._paddingItemsCreated = true;
+						createPaddingForNonWrappingCarousel();
 					} else {
-						// TODO: there's an optimisation we could do here, but it may not work with all carousels
-						// TODO: especially those that have different sized elements.
-						// TODO:
-						// TODO: For carousels with items that all have the same width we can use 'maskSize.width / 2'
-
-						var requiredWidth = this._multiWidthItems ? maskSize.width : Math.ceil(maskSize.width / 2);
-
-						while(copyWidth < requiredWidth) {
-							var w = this._childWidgetOrder[i];
-							var clone = device.cloneElement(w.outputElement, true, "clone", "_clone");
-							clone.cloneOfWidget = w;
-
-							if(w.hasClass('active')) {
-								device.removeClassFromElement(clone, 'active', true);
-							}
-							if(w.hasClass('focus')) {
-								device.removeClassFromElement(clone, 'focus', true);
-								device.removeClassFromElement(clone, 'buttonFocussed', true);
-							}
-							device.appendChildElement(this.outputElement, clone);
-							var w = device.getElementSize(w.outputElement).width;
-							if(i === 0) {
-								requiredWidth += w;
-							}
-							copyWidth += w;
-							i++;
-							if(i == this._childWidgetOrder.length) i = 0;
-						}
-
-						copyWidth = 0;
-						i = this._childWidgetOrder.length-1;
-						while(copyWidth < requiredWidth) {
-							var w = this._childWidgetOrder[i];
-							var clone = device.cloneElement(w.outputElement, true, "clone", "_clone");
-							clone.cloneOfWidget = w;
-
-							if(w.hasClass('active')) {
-								device.removeClassFromElement(clone, 'active', true);
-							}
-							if(w.hasClass('focus')) {
-								device.removeClassFromElement(clone, 'focus', true);
-							}
-
-							device.prependChildElement(this.outputElement, clone);
-							copyWidth += device.getElementSize(w.outputElement).width;
-							i--;
-							prefixClones++;
-							if(i == -1) i = this._childWidgetOrder.length-1;
-						}
+						prefixClones = createWrappingCloneElementsAndReturnNumberOfPrefixedClones();
 					}
 
 					this._prefixClones = prefixClones;
@@ -462,9 +460,8 @@ require.def('antie/widgets/horizontalcarousel',
 					// TODO: we shouldn't really do this here - we can't assume the preselected item is at index 0
 					// TODO: or at least support moving to the correct item when the selected index is change
 					// TODO: from an external class
+
 					if(this._activeChildWidget && (this._viewportMode != HorizontalCarousel.VIEWPORT_MODE_DOM)) {
-						var elpos = device.getElementOffset(this._activeChildWidget.outputElement);
-						var elsize = device.getElementSize(this._activeChildWidget.outputElement);
 						this._alignToElement(this._activeChildWidget.outputElement, true);
 					}
 
